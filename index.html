@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr" class="h-full bg-pink-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="app-title">Community Caretaker App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" xintegrity="sha512-xodxPxxj/8c1r9Tj7jC0345/0Tz+d8L7F+l+J6l1R1e3S0y51Jz54t45v9yL2bF8C+C7t9Z57827878d65C+A==" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js" xintegrity="sha512-yA4z9V1R2y+WbC8wL2o/X4p4T4t2N54x5K7k91L9X7+W/Yt4z99f918C/H6c73j37E4a1q72N952a2818a4a2A==" crossorigin=""></script>
+    <style>
+        body {
+            background-image: radial-gradient(circle at center, rgba(255, 204, 255, 0.4), rgba(255, 255, 255, 0.6));
+            background-size: cover;
+            background-attachment: fixed;
+        }
+        [dir="rtl"] #lost-and-found h2,
+        [dir="rtl"] #lost-and-found form label,
+        [dir="rtl"] #small-tasks h2,
+        [dir="rtl"] #small-tasks form label {
+            text-align: right;
+        }
+        [dir="rtl"] #lost-pets-list .text-right,
+        [dir="rtl"] #tasks-list .text-right {
+            text-align: right;
+        }
+        [dir="rtl"] #modal-overlay .text-sm,
+        [dir="rtl"] #contact-modal-overlay .text-sm,
+        [dir="rtl"] #report-modal-overlay .text-sm {
+             text-align: right;
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db;
+        let auth;
+        let storage;
+        let userId = null;
+        let currentLang = localStorage.getItem('lang') || 'en';
+
+        // Set Firebase debug logging
+        setLogLevel('debug');
+
+        // Translations object
+        const translations = {
+            en: {
+                title: 'Community Caretaker App',
+                tagline: 'Small actions, big impact. A hyper-local network for helping pets in our community.',
+                lostAndFound: 'Lost & Found',
+                smallTasks: 'Small Tasks',
+                lostFoundTitle: 'Lost and Found Registry',
+                petType: 'Pet Type',
+                petName: 'Pet Name (Optional)',
+                description: 'Description',
+                contactInfo: 'Contact Information',
+                lastSeenLocation: 'Last Seen Location',
+                clickToPin: 'Click on the map to drop a pin.',
+                uploadPhoto: 'Upload Photo (Optional)',
+                reportPet: 'Report Pet',
+                loadingPets: 'Loading lost pet data...',
+                noPets: 'No lost or found pets reported yet.',
+                petNamePlaceholder: 'E.g., Buddy',
+                petDescPlaceholder: 'E.g., Small brown terrier with a red collar',
+                contactPlaceholder: 'E.g., 555-123-4567 or email@example.com',
+                tasksTitle: 'Small Task Alerts',
+                taskTitle: 'Task Title',
+                taskDetails: 'Task Details',
+                taskTitlePlaceholder: 'E.g., Leave out water',
+                taskDescPlaceholder: 'E.g., A stray cat has been seen near the park. Please leave a bowl of water if you can.',
+                location: 'Location',
+                postTask: 'Post Task',
+                loadingTasks: 'Loading small tasks...',
+                noTasks: 'No small tasks available yet.',
+                contactPoster: 'Contact Poster',
+                report: 'Report',
+                reported: 'Reported:',
+                posted: 'Posted:',
+                ok: 'OK',
+                close: 'Close',
+                success: 'Success!',
+                error: 'Error!',
+                info: 'Information',
+                contactModalTitle: 'Contact Information',
+                noContact: 'No contact information provided.',
+                reportModalTitle: 'Report this Post',
+                reportReason: 'Reason for report',
+                selectReason: 'Select a reason',
+                inappropriate: 'Inappropriate Content',
+                spam: 'Spam',
+                misinformation: 'Misinformation',
+                other: 'Other',
+                cancel: 'Cancel',
+                submitReport: 'Submit Report',
+                userId: 'User ID:',
+                uploading: 'Uploading photo...',
+                authWait: 'Please wait for authentication to complete before submitting.',
+                failedInit: 'Failed to initialize the app. Please check the console for more details.',
+                descRequired: 'Please provide a description.',
+                photoError: 'An error occurred while uploading the photo. Please try again.',
+                docError: 'An error occurred. Please try again.',
+                titleDescRequired: 'Please provide a title and description.',
+                reportSuccess: 'Thank you for reporting. Your report has been submitted for review.',
+                reportError: 'An error occurred while submitting the report.',
+                reasonRequired: 'Please select a reason for the report.',
+                petSubmitted: 'Thank you! Your pet report has been submitted.',
+                taskSubmitted: 'Your task has been posted successfully!',
+            },
+            ar: {
+                title: 'تطبيق راعي المجتمع',
+                tagline: 'أفعال صغيرة، تأثير كبير. شبكة محلية لمساعدة الحيوانات الأليفة في مجتمعنا.',
+                lostAndFound: 'مفقودات وموجودات',
+                smallTasks: 'مهام صغيرة',
+                lostFoundTitle: 'سجل المفقودات والموجودات',
+                petType: 'نوع الحيوان الأليف',
+                petName: 'اسم الحيوان الأليف (اختياري)',
+                description: 'الوصف',
+                contactInfo: 'معلومات الاتصال',
+                lastSeenLocation: 'آخر موقع شوهد فيه',
+                clickToPin: 'انقر على الخريطة لوضع علامة.',
+                uploadPhoto: 'رفع صورة (اختياري)',
+                reportPet: 'الإبلاغ عن حيوان أليف',
+                loadingPets: 'جارٍ تحميل بيانات الحيوانات الأليفة المفقودة...',
+                noPets: 'لم يتم الإبلاغ عن أي حيوانات أليفة مفقودة أو موجودة بعد.',
+                petNamePlaceholder: 'مثال: بودي',
+                petDescPlaceholder: 'مثال: كلب صغير بني اللون يرتدي طوقًا أحمر',
+                contactPlaceholder: 'مثال: 555-123-4567 أو بريد_إلكتروني@example.com',
+                tasksTitle: 'تنبيهات المهام الصغيرة',
+                taskTitle: 'عنوان المهمة',
+                taskDetails: 'تفاصيل المهمة',
+                taskTitlePlaceholder: 'مثال: ترك ماء',
+                taskDescPlaceholder: 'مثال: شوهدت قطة ضالة بالقرب من الحديقة. يرجى ترك وعاء من الماء إذا استطعت.',
+                location: 'الموقع',
+                postTask: 'نشر مهمة',
+                loadingTasks: 'جارٍ تحميل المهام الصغيرة...',
+                noTasks: 'لا توجد مهام صغيرة متاحة بعد.',
+                contactPoster: 'الاتصال بالناشر',
+                report: 'الإبلاغ',
+                reported: 'تم الإبلاغ:',
+                posted: 'تم النشر:',
+                ok: 'حسنًا',
+                close: 'إغلاق',
+                success: 'نجاح!',
+                error: 'خطأ!',
+                info: 'معلومات',
+                contactModalTitle: 'معلومات الاتصال',
+                noContact: 'لم يتم توفير معلومات الاتصال.',
+                reportModalTitle: 'الإبلاغ عن هذا المنشور',
+                reportReason: 'سبب الإبلاغ',
+                selectReason: 'اختر سببًا',
+                inappropriate: 'محتوى غير لائق',
+                spam: 'رسائل مزعجة',
+                misinformation: 'معلومات مضللة',
+                other: 'أخرى',
+                cancel: 'إلغاء',
+                submitReport: 'إرسال الإبلاغ',
+                userId: 'معرّف المستخدم:',
+                uploading: 'جارٍ رفع الصورة...',
+                authWait: 'يرجى انتظار اكتمال المصادقة قبل الإرسال.',
+                failedInit: 'فشل تهيئة التطبيق. يرجى التحقق من وحدة التحكم لمزيد من التفاصيل.',
+                descRequired: 'يرجى تقديم وصف.',
+                photoError: 'حدث خطأ أثناء رفع الصورة. يرجى المحاولة مرة أخرى.',
+                docError: 'حدث خطأ. يرجى المحاولة مرة أخرى.',
+                titleDescRequired: 'يرجى تقديم عنوان ووصف.',
+                reportSuccess: 'شكرا لك على الإبلاغ. تم إرسال بلاغك للمراجعة.',
+                reportError: 'حدث خطأ أثناء إرسال البلاغ.',
+                reasonRequired: 'يرجى تحديد سبب للبلاغ.',
+                petSubmitted: 'شكراً لك! تم إرسال بلاغك عن الحيوان الأليف.',
+                taskSubmitted: 'تم نشر مهمتك بنجاح!',
+            }
+        };
+
+        // Function to update the page content based on the current language
+        function updateContent() {
+            const t = translations[currentLang];
+            document.getElementById('app-title').textContent = t.title;
+            document.getElementById('app-tagline').textContent = t.tagline;
+            document.getElementById('lost-found-link').textContent = t.lostAndFound;
+            document.getElementById('small-tasks-link').textContent = t.smallTasks;
+            document.getElementById('lost-found-header').textContent = t.lostFoundTitle;
+            document.getElementById('pet-type-label').textContent = t.petType;
+            document.getElementById('pet-name-label').textContent = t.petName;
+            document.getElementById('pet-desc-label').textContent = t.description;
+            document.getElementById('pet-contact-label').textContent = t.contactInfo;
+            document.getElementById('pet-location-label').textContent = t.lastSeenLocation;
+            document.getElementById('pet-pin-tip').textContent = t.clickToPin;
+            document.getElementById('pet-photo-label').textContent = t.uploadPhoto;
+            document.getElementById('report-pet-form-submit-btn').textContent = t.reportPet;
+            document.getElementById('report-pet-loading').textContent = t.uploading;
+            document.getElementById('tasks-header').textContent = t.tasksTitle;
+            document.getElementById('task-title-label').textContent = t.taskTitle;
+            document.getElementById('task-desc-label').textContent = t.taskDetails;
+            document.getElementById('task-contact-label').textContent = t.contactInfo;
+            document.getElementById('task-location-label').textContent = t.location;
+            document.getElementById('task-pin-tip').textContent = t.clickToPin;
+            document.getElementById('task-photo-label').textContent = t.uploadPhoto;
+            document.getElementById('post-task-form-submit-btn').textContent = t.postTask;
+            document.getElementById('post-task-loading').textContent = t.uploading;
+            document.getElementById('modal-close-btn').textContent = t.ok;
+            document.getElementById('contact-modal-title').textContent = t.contactModalTitle;
+            document.getElementById('contact-modal-close-btn').textContent = t.close;
+            document.getElementById('report-modal-title').textContent = t.reportModalTitle;
+            document.getElementById('report-reason-label').textContent = t.reportReason;
+            document.getElementById('report-reason-default').textContent = t.selectReason;
+            document.getElementById('report-reason-inappropriate').textContent = t.inappropriate;
+            document.getElementById('report-reason-spam').textContent = t.spam;
+            document.getElementById('report-reason-misinformation').textContent = t.misinformation;
+            document.getElementById('report-reason-other').textContent = t.other;
+            document.getElementById('report-cancel-btn').textContent = t.cancel;
+            document.getElementById('report-submit-btn').textContent = t.submitReport;
+            
+            // Update placeholders
+            document.getElementById('pet-name').placeholder = t.petNamePlaceholder;
+            document.getElementById('pet-description').placeholder = t.petDescPlaceholder;
+            document.getElementById('pet-contact').placeholder = t.contactPlaceholder;
+            document.getElementById('task-title').placeholder = t.taskTitlePlaceholder;
+            document.getElementById('task-description').placeholder = t.taskDescPlaceholder;
+            document.getElementById('task-contact').placeholder = t.contactPlaceholder;
+
+            // Update directionality
+            document.documentElement.setAttribute('lang', currentLang);
+            document.documentElement.setAttribute('dir', currentLang === 'ar' ? 'rtl' : 'ltr');
+            document.getElementById('lang-toggle-btn').textContent = currentLang === 'ar' ? 'English' : 'عربي';
+
+            // Re-render dynamic lists
+            if (db) {
+                setupListeners();
+            }
+        }
+
+        // Function to toggle language
+        function toggleLanguage() {
+            currentLang = currentLang === 'en' ? 'ar' : 'en';
+            localStorage.setItem('lang', currentLang);
+            updateContent();
+        }
+
+        // Assign toggle function to the button
+        window.toggleLanguage = toggleLanguage;
+
+        // Function to show a custom modal alert
+        function showModal(messageKey, type = 'info') {
+            const t = translations[currentLang];
+            const modal = document.getElementById('modal-overlay');
+            const modalMessage = document.getElementById('modal-message');
+            const modalTitle = document.getElementById('modal-title');
+            
+            modalMessage.textContent = t[messageKey] || messageKey; // Use key or raw message
+            
+            // Set title and color based on message type
+            if (type === 'success') {
+                modalTitle.textContent = t.success;
+                modalMessage.classList.add('text-teal-600');
+            } else if (type === 'error') {
+                modalTitle.textContent = t.error;
+                modalMessage.classList.add('text-red-600');
+            } else {
+                modalTitle.textContent = t.info;
+                modalMessage.classList.add('text-blue-600');
+            }
+            
+            modal.classList.remove('hidden');
+        }
+
+        // Initialize Firebase and set up auth listener
+        window.onload = async function() {
+            updateContent(); // Initial content load
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                storage = getStorage(app);
+
+                // Sign in with custom token if available, otherwise sign in anonymously
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Listen for auth state changes
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        document.getElementById('user-info').textContent = `${translations[currentLang].userId} ${userId}`;
+                        setupListeners();
+                        initMaps();
+                    } else {
+                        userId = null;
+                        document.getElementById('user-info').textContent = `${translations[currentLang].userId} N/A`;
+                    }
+                });
+            } catch (error) {
+                console.error("Error initializing Firebase:", error);
+                showModal("failedInit", "error");
+            }
+        }
+        
+        // Initialize Leaflet maps on forms
+        function initMaps() {
+            // Pet location map
+            const petMap = L.map('pet-location-map').setView([30.0444, 31.2357], 13); // Default to Cairo, Egypt
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(petMap);
+            
+            let petMarker = L.marker(petMap.getCenter()).addTo(petMap);
+            document.getElementById('pet-location-lat').value = petMap.getCenter().lat;
+            document.getElementById('pet-location-lng').value = petMap.getCenter().lng;
+
+            petMap.on('click', (e) => {
+                if (petMarker) {
+                    petMap.removeLayer(petMarker);
+                }
+                petMarker = L.marker(e.latlng).addTo(petMap);
+                document.getElementById('pet-location-lat').value = e.latlng.lat;
+                document.getElementById('pet-location-lng').value = e.latlng.lng;
+            });
+
+            // Task location map
+            const taskMap = L.map('task-location-map').setView([30.0444, 31.2357], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(taskMap);
+
+            let taskMarker = L.marker(taskMap.getCenter()).addTo(taskMap);
+            document.getElementById('task-location-lat').value = taskMap.getCenter().lat;
+            document.getElementById('task-location-lng').value = taskMap.getCenter().lng;
+
+            taskMap.on('click', (e) => {
+                if (taskMarker) {
+                    taskMap.removeLayer(taskMarker);
+                }
+                taskMarker = L.marker(e.latlng).addTo(taskMap);
+                document.getElementById('task-location-lat').value = e.latlng.lat;
+                document.getElementById('task-location-lng').value = e.latlng.lng;
+            });
+        }
+
+        // Setup real-time listeners for all collections
+        function setupListeners() {
+            if (!db) {
+                console.error("Firestore is not initialized.");
+                return;
+            }
+
+            // Real-time listener for the Lost & Found Registry
+            const lostPetsCollectionRef = collection(db, `artifacts/${appId}/public/data/lost_pets`);
+            onSnapshot(lostPetsCollectionRef, (snapshot) => {
+                const lostPets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                lostPets.sort((a, b) => b.timestamp - a.timestamp); // Sort by newest first
+                renderLostPets(lostPets);
+            });
+
+            // Real-time listener for Small Task Alerts
+            const tasksCollectionRef = collection(db, `artifacts/${appId}/public/data/tasks`);
+            onSnapshot(tasksCollectionRef, (snapshot) => {
+                const tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                tasks.sort((a, b) => b.timestamp - a.timestamp); // Sort by newest first
+                renderTasks(tasks);
+            });
+        }
+        
+        // Render Lost & Found pets
+        function renderLostPets(pets) {
+            const t = translations[currentLang];
+            const container = document.getElementById('lost-pets-list');
+            container.innerHTML = ''; // Clear existing content
+            if (pets.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500 mt-4">${t.noPets}</p>`;
+            } else {
+                pets.forEach(pet => {
+                    const petCard = document.createElement('div');
+                    petCard.className = 'bg-white p-4 rounded-xl shadow-md space-y-2';
+                    
+                    let mediaSection = '';
+                    if (pet.photoUrl || (pet.latitude && pet.longitude)) {
+                         mediaSection = `
+                            <div class="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-4">
+                                ${pet.photoUrl ? `<img src="${pet.photoUrl}" alt="Photo of ${pet.name || 'a pet'}" class="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-xl shadow-lg">` : ''}
+                                ${pet.latitude && pet.longitude ? `<div id="map-pet-${pet.id}" class="w-24 h-24 sm:w-32 sm:h-32 rounded-xl shadow-lg z-0"></div>` : ''}
+                            </div>
+                        `;
+                    }
+
+                    petCard.innerHTML = `
+                        ${mediaSection}
+                        <div class="flex-grow">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-2xl">${pet.type === 'cat' ? '🐱' : '🐶'}</span>
+                                <h3 class="text-lg font-bold text-fuchsia-800">${pet.name || 'Unknown Pet'}</h3>
+                            </div>
+                            <p class="text-gray-600 mt-1">${pet.description}</p>
+                            <p class="text-sm text-gray-500 mt-2">
+                                ${t.reported} ${new Date(pet.timestamp.toDate()).toLocaleDateString()}
+                            </p>
+                            ${pet.latitude && pet.longitude ? `<p class="text-sm text-gray-500">Location: <span class="text-blue-500 cursor-pointer" onclick="showLocationMap('${pet.id}', ${pet.latitude}, ${pet.longitude})">Click map to see</span></p>` : ''}
+                            <div class="flex space-x-2 mt-2">
+                                <button onclick="showContactModal('${pet.contact}')" class="bg-teal-400 text-white text-xs font-semibold py-1 px-3 rounded-full hover:bg-teal-500 transition-colors">${t.contactPoster}</button>
+                                <button onclick="showReportModal('${pet.id}', 'lost_pet')" class="bg-red-400 text-white text-xs font-semibold py-1 px-3 rounded-full hover:bg-red-500 transition-colors">${t.report}</button>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(petCard);
+
+                    if (pet.latitude && pet.longitude) {
+                        const mapId = `map-pet-${pet.id}`;
+                        // We need to wait for the DOM to be ready before initializing the map
+                        setTimeout(() => {
+                             const miniMap = L.map(mapId, {
+                                zoomControl: false,
+                                dragging: false,
+                                scrollWheelZoom: false,
+                                doubleClickZoom: false,
+                                boxZoom: false,
+                                keyboard: false,
+                                tap: false,
+                                touchZoom: false
+                            }).setView([pet.latitude, pet.longitude], 14);
+                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(miniMap);
+                            L.marker([pet.latitude, pet.longitude]).addTo(miniMap);
+                            miniMap.invalidateSize();
+                        }, 100);
+                    }
+                });
+            }
+        }
+
+        // Render Small Tasks
+        function renderTasks(tasks) {
+            const t = translations[currentLang];
+            const container = document.getElementById('tasks-list');
+            container.innerHTML = ''; // Clear existing content
+            if (tasks.length === 0) {
+                container.innerHTML = `<p class="text-center text-gray-500 mt-4">${t.noTasks}</p>`;
+            } else {
+                tasks.forEach(task => {
+                    const taskCard = document.createElement('div');
+                    taskCard.className = 'bg-white p-4 rounded-xl shadow-md space-y-2';
+                    
+                    let mediaSection = '';
+                    if (task.photoUrl || (task.latitude && task.longitude)) {
+                         mediaSection = `
+                            <div class="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-4">
+                                ${task.photoUrl ? `<img src="${task.photoUrl}" alt="Photo of task location" class="w-24 h-24 sm:w-32 sm:h-32 object-cover rounded-xl shadow-lg">` : ''}
+                                ${task.latitude && task.longitude ? `<div id="map-task-${task.id}" class="w-24 h-24 sm:w-32 sm:h-32 rounded-xl shadow-lg z-0"></div>` : ''}
+                            </div>
+                        `;
+                    }
+
+                    taskCard.innerHTML = `
+                        ${mediaSection}
+                        <div class="flex-grow">
+                            <h3 class="text-lg font-bold text-fuchsia-800">💧 ${task.title}</h3>
+                            <p class="text-gray-600 mt-1">${task.description}</p>
+                            <p class="text-sm text-gray-500 mt-2">
+                                ${t.posted} ${new Date(task.timestamp.toDate()).toLocaleDateString()}
+                            </p>
+                            ${task.latitude && task.longitude ? `<p class="text-sm text-gray-500">Location: <span class="text-blue-500 cursor-pointer" onclick="showLocationMap('${task.id}', ${task.latitude}, ${task.longitude})">Click map to see</span></p>` : ''}
+                            <div class="flex space-x-2 mt-2">
+                                <button onclick="showContactModal('${task.contact}')" class="bg-teal-400 text-white text-xs font-semibold py-1 px-3 rounded-full hover:bg-teal-500 transition-colors">${t.contactPoster}</button>
+                                <button onclick="showReportModal('${task.id}', 'task')" class="bg-red-400 text-white text-xs font-semibold py-1 px-3 rounded-full hover:bg-red-500 transition-colors">${t.report}</button>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(taskCard);
+
+                    if (task.latitude && task.longitude) {
+                        const mapId = `map-task-${task.id}`;
+                        // We need to wait for the DOM to be ready before initializing the map
+                        setTimeout(() => {
+                             const miniMap = L.map(mapId, {
+                                zoomControl: false,
+                                dragging: false,
+                                scrollWheelZoom: false,
+                                doubleClickZoom: false,
+                                boxZoom: false,
+                                keyboard: false,
+                                tap: false,
+                                touchZoom: false
+                            }).setView([task.latitude, task.longitude], 14);
+                            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(miniMap);
+                            L.marker([task.latitude, task.longitude]).addTo(miniMap);
+                            miniMap.invalidateSize();
+                        }, 100);
+                    }
+                });
+            }
+        }
+        
+        // Show contact information modal
+        function showContactModal(contactInfo) {
+            const t = translations[currentLang];
+            const modal = document.getElementById('contact-modal-overlay');
+            const message = document.getElementById('contact-modal-message');
+            message.textContent = contactInfo || t.noContact;
+            modal.classList.remove('hidden');
+        }
+
+        // Show report modal
+        function showReportModal(postId, postType) {
+            const modal = document.getElementById('report-modal-overlay');
+            document.getElementById('report-post-id').value = postId;
+            document.getElementById('report-post-type').value = postType;
+            modal.classList.remove('hidden');
+        }
+
+        // Handle report submission
+        document.getElementById('report-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!userId) {
+                showModal("authWait", "error");
+                return;
+            }
+            const t = translations[currentLang];
+            const postId = document.getElementById('report-post-id').value;
+            const postType = document.getElementById('report-post-type').value;
+            const reportReason = document.getElementById('report-reason').value;
+
+            if (!reportReason) {
+                showModal("reasonRequired", "error");
+                return;
+            }
+
+            const reportsCollectionRef = collection(db, `artifacts/${appId}/public/data/reports`);
+            try {
+                await addDoc(reportsCollectionRef, {
+                    postId: postId,
+                    postType: postType,
+                    reason: reportReason,
+                    reporterId: userId,
+                    timestamp: serverTimestamp()
+                });
+                document.getElementById('report-modal-overlay').classList.add('hidden');
+                showModal("reportSuccess", "success");
+            } catch (error) {
+                console.error("Error submitting report:", error);
+                showModal("reportError", "error");
+            }
+        });
+        
+        // Handle form submission for Lost & Found pet reports
+        document.getElementById('report-pet-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!userId) {
+                showModal("authWait", "error");
+                return;
+            }
+            const t = translations[currentLang];
+
+            const petType = document.getElementById('pet-type').value;
+            const petName = document.getElementById('pet-name').value;
+            const petDescription = document.getElementById('pet-description').value;
+            const petPhotoFile = document.getElementById('pet-photo-file').files[0];
+            const petLat = document.getElementById('pet-location-lat').value;
+            const petLng = document.getElementById('pet-location-lng').value;
+            const petContact = document.getElementById('pet-contact').value;
+
+            if (!petDescription) {
+                showModal("descRequired", "error");
+                return;
+            }
+
+            let photoUrl = '';
+            if (petPhotoFile) {
+                const uploadButton = document.getElementById('report-pet-form-submit-btn');
+                const loadingIndicator = document.getElementById('report-pet-loading');
+                uploadButton.disabled = true;
+                loadingIndicator.classList.remove('hidden');
+
+                try {
+                    const storageRef = ref(storage, `artifacts/${appId}/images/${userId}/${Date.now()}_${petPhotoFile.name}`);
+                    const uploadTask = await uploadBytes(storageRef, petPhotoFile);
+                    photoUrl = await getDownloadURL(uploadTask.ref);
+                } catch (error) {
+                    console.error("Error uploading photo:", error);
+                    showModal("photoError", "error");
+                    uploadButton.disabled = false;
+                    loadingIndicator.classList.add('hidden');
+                    return;
+                } finally {
+                    uploadButton.disabled = false;
+                    loadingIndicator.classList.add('hidden');
+                }
+            }
+
+            const docRef = collection(db, `artifacts/${appId}/public/data/lost_pets`);
+            
+            try {
+                await addDoc(docRef, {
+                    type: petType,
+                    name: petName,
+                    description: petDescription,
+                    latitude: parseFloat(petLat),
+                    longitude: parseFloat(petLng),
+                    photoUrl: photoUrl,
+                    contact: petContact,
+                    reporterId: userId,
+                    timestamp: serverTimestamp()
+                });
+                showModal("petSubmitted", "success");
+                e.target.reset(); // Clear the form
+            } catch (error) {
+                console.error("Error adding document: ", error);
+                showModal("docError", "error");
+            }
+        });
+
+        // Handle form submission for Small Task Alerts
+        document.getElementById('post-task-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!userId) {
+                showModal("authWait", "error");
+                return;
+            }
+            const t = translations[currentLang];
+
+            const taskTitle = document.getElementById('task-title').value;
+            const taskDescription = document.getElementById('task-description').value;
+            const taskPhotoFile = document.getElementById('task-photo-file').files[0];
+            const taskLat = document.getElementById('task-location-lat').value;
+            const taskLng = document.getElementById('task-location-lng').value;
+            const taskContact = document.getElementById('task-contact').value;
+
+
+            if (!taskTitle || !taskDescription) {
+                showModal("titleDescRequired", "error");
+                return;
+            }
+
+            let photoUrl = '';
+            if (taskPhotoFile) {
+                const uploadButton = document.getElementById('post-task-form-submit-btn');
+                const loadingIndicator = document.getElementById('post-task-loading');
+                uploadButton.disabled = true;
+                loadingIndicator.classList.remove('hidden');
+
+                try {
+                    const storageRef = ref(storage, `artifacts/${appId}/images/${userId}/${Date.now()}_${taskPhotoFile.name}`);
+                    const uploadTask = await uploadBytes(storageRef, taskPhotoFile);
+                    photoUrl = await getDownloadURL(uploadTask.ref);
+                } catch (error) {
+                    console.error("Error uploading photo:", error);
+                    showModal("photoError", "error");
+                    uploadButton.disabled = false;
+                    loadingIndicator.classList.add('hidden');
+                    return;
+                } finally {
+                    uploadButton.disabled = false;
+                    loadingIndicator.classList.add('hidden');
+                }
+            }
+
+            const docRef = collection(db, `artifacts/${appId}/public/data/tasks`);
+            
+            try {
+                await addDoc(docRef, {
+                    title: taskTitle,
+                    description: taskDescription,
+                    latitude: parseFloat(taskLat),
+                    longitude: parseFloat(taskLng),
+                    photoUrl: photoUrl,
+                    contact: taskContact,
+                    posterId: userId,
+                    timestamp: serverTimestamp()
+                });
+                showModal("taskSubmitted", "success");
+                e.target.reset(); // Clear the form
+            } catch (error) {
+                console.error("Error adding document: ", error);
+                showModal("docError", "error");
+            }
+        });
+
+        // Close modal when the button is clicked
+        document.getElementById('modal-close-btn').addEventListener('click', () => {
+            document.getElementById('modal-overlay').classList.add('hidden');
+        });
+
+        // Close contact modal when the button is clicked
+        document.getElementById('contact-modal-close-btn').addEventListener('click', () => {
+            document.getElementById('contact-modal-overlay').classList.add('hidden');
+        });
+
+        // Close report modal when the button is clicked
+        document.getElementById('report-cancel-btn').addEventListener('click', () => {
+            document.getElementById('report-modal-overlay').classList.add('hidden');
+        });
+    </script>
+</head>
+<body class="bg-pink-50 flex flex-col min-h-screen relative">
+    <!-- Language Switch Button -->
+    <button id="lang-toggle-btn" onclick="toggleLanguage()"
+         class="absolute top-4 right-4 z-10 bg-white p-2 rounded-md shadow-lg cursor-pointer text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-100">
+        عربي
+    </button>
+
+    <div class="container mx-auto p-4 sm:p-8 flex-grow">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-fuchsia-700" id="app-name">Community Caretaker</h1>
+            <p class="mt-2 text-lg text-gray-600" id="app-tagline">
+                Small actions, big impact. A hyper-local network for helping pets in our community.
+            </p>
+            <div id="user-info" class="text-sm text-gray-400 mt-2"></div>
+        </header>
+
+        <main class="flex flex-col space-y-8">
+            <!-- Navigation Links -->
+            <div class="grid grid-cols-2 gap-4">
+                <a href="#lost-and-found" class="bg-white p-6 rounded-3xl shadow-lg border border-gray-200 text-center font-bold text-lg text-fuchsia-800 transition-transform duration-200 hover:scale-105 flex flex-col items-center">
+                    <span class="text-3xl mb-2">🐾</span> <span id="lost-found-link">Lost & Found</span>
+                </a>
+                <a href="#small-tasks" class="bg-white p-6 rounded-3xl shadow-lg border border-gray-200 text-center font-bold text-lg text-fuchsia-800 transition-transform duration-200 hover:scale-105 flex flex-col items-center">
+                    <span class="text-3xl mb-2">🌱</span> <span id="small-tasks-link">Small Tasks</span>
+                </a>
+            </div>
+
+            <!-- Lost and Found Section -->
+            <section id="lost-and-found" class="bg-white p-6 rounded-3xl shadow-lg border border-gray-200">
+                <h2 class="text-2xl font-bold text-fuchsia-800 mb-4" id="lost-found-header">Lost and Found Registry</h2>
+                <form id="report-pet-form" class="space-y-4">
+                    <div>
+                        <label for="pet-type" class="block text-sm font-medium text-gray-700" id="pet-type-label">Pet Type</label>
+                        <select id="pet-type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm">
+                            <option value="dog">Dog</option>
+                            <option value="cat">Cat</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="pet-name" class="block text-sm font-medium text-gray-700" id="pet-name-label">Pet Name (Optional)</label>
+                        <input type="text" id="pet-name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="pet-description" class="block text-sm font-medium text-gray-700" id="pet-desc-label">Description</label>
+                        <textarea id="pet-description" required rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm"></textarea>
+                    </div>
+                     <div>
+                        <label for="pet-contact" class="block text-sm font-medium text-gray-700" id="pet-contact-label">Contact Information</label>
+                        <input type="text" id="pet-contact" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700" id="pet-location-label">Last Seen Location</label>
+                        <div id="pet-location-map" class="mt-1 w-full h-64 rounded-xl shadow-md z-0"></div>
+                        <p class="text-xs text-gray-500 mt-2" id="pet-pin-tip">Click on the map to drop a pin.</p>
+                        <input type="hidden" id="pet-location-lat">
+                        <input type="hidden" id="pet-location-lng">
+                    </div>
+                    <div>
+                        <label for="pet-photo-file" class="block text-sm font-medium text-gray-700" id="pet-photo-label">Upload Photo (Optional)</label>
+                        <input type="file" id="pet-photo-file" accept="image/*" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm">
+                    </div>
+                    <button type="submit" id="report-pet-form-submit-btn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-teal-400 hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">
+                        Report Pet
+                    </button>
+                    <div id="report-pet-loading" class="hidden text-center text-sm text-gray-500"></div>
+                </form>
+                <div id="lost-pets-list" class="mt-6 space-y-4 max-h-80 overflow-y-auto">
+                    <!-- Lost pet reports will be dynamically added here -->
+                    <p class="text-center text-gray-500 mt-4" id="initial-pet-load-msg">Loading lost pet data...</p>
+                </div>
+            </section>
+
+            <!-- Small Tasks Section -->
+            <section id="small-tasks" class="bg-white p-6 rounded-3xl shadow-lg border border-gray-200">
+                <h2 class="text-2xl font-bold text-fuchsia-800 mb-4" id="tasks-header">Small Task Alerts</h2>
+                <form id="post-task-form" class="space-y-4">
+                    <div>
+                        <label for="task-title" class="block text-sm font-medium text-gray-700" id="task-title-label">Task Title</label>
+                        <input type="text" id="task-title" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="task-description" class="block text-sm font-medium text-gray-700" id="task-desc-label">Task Details</label>
+                        <textarea id="task-description" required rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm"></textarea>
+                    </div>
+                    <div>
+                        <label for="task-contact" class="block text-sm font-medium text-gray-700" id="task-contact-label">Contact Information</label>
+                        <input type="text" id="task-contact" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700" id="task-location-label">Location</label>
+                        <div id="task-location-map" class="mt-1 w-full h-64 rounded-xl shadow-md z-0"></div>
+                        <p class="text-xs text-gray-500 mt-2" id="task-pin-tip">Click on the map to drop a pin.</p>
+                        <input type="hidden" id="task-location-lat">
+                        <input type="hidden" id="task-location-lng">
+                    </div>
+                    <div>
+                        <label for="task-photo-file" class="block text-sm font-medium text-gray-700" id="task-photo-label">Upload Photo (Optional)</label>
+                        <input type="file" id="task-photo-file" accept="image/*" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-fuchsia-500 focus:border-fuchsia-500 sm:text-sm">
+                    </div>
+                    <button type="submit" id="post-task-form-submit-btn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-teal-400 hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors">
+                        Post Task
+                    </button>
+                    <div id="post-task-loading" class="hidden text-center text-sm text-gray-500"></div>
+                </form>
+                <div id="tasks-list" class="mt-6 space-y-4 max-h-80 overflow-y-auto">
+                    <!-- Tasks will be dynamically added here -->
+                    <p class="text-center text-gray-500 mt-4" id="initial-task-load-msg">Loading small tasks...</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- General Alert Modal -->
+    <div id="modal-overlay" class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full hidden z-50 transition-opacity duration-300">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 id="modal-title" class="text-lg leading-6 font-medium text-gray-900"></h3>
+                <div class="mt-2 px-7 py-3">
+                    <p id="modal-message" class="text-sm text-gray-500"></p>
+                </div>
+                <div class="items-center px-4 py-3">
+                    <button id="modal-close-btn" class="px-4 py-2 bg-teal-400 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div id="contact-modal-overlay" class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full hidden z-50 transition-opacity duration-300">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 id="contact-modal-title" class="text-lg leading-6 font-medium text-gray-900">Contact Information</h3>
+                <div class="mt-2 px-7 py-3">
+                    <p id="contact-modal-message" class="text-sm font-semibold text-gray-700"></p>
+                </div>
+                <div class="items-center px-4 py-3">
+                    <button id="contact-modal-close-btn" class="px-4 py-2 bg-teal-400 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="report-modal-overlay" class="fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full hidden z-50 transition-opacity duration-300">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 id="report-modal-title" class="text-lg leading-6 font-medium text-gray-900">Report this Post</h3>
+                <form id="report-form" class="space-y-4">
+                    <input type="hidden" id="report-post-id">
+                    <input type="hidden" id="report-post-type">
+                    <div>
+                        <label for="report-reason" class="block text-sm font-medium text-gray-700" id="report-reason-label">Reason for report</label>
+                        <select id="report-reason" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-red-500 focus:border-red-500 sm:text-sm">
+                            <option value="" id="report-reason-default">Select a reason</option>
+                            <option value="inappropriate_content" id="report-reason-inappropriate">Inappropriate Content</option>
+                            <option value="spam" id="report-reason-spam">Spam</option>
+                            <option value="misinformation" id="report-reason-misinformation">Misinformation</option>
+                            <option value="other" id="report-reason-other">Other</option>
+                        </select>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button type="button" id="report-cancel-btn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-full shadow-sm text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 focus:outline-none transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" id="report-submit-btn" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">
+                            Submit Report
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
