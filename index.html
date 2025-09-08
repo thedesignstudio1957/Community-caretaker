@@ -28,6 +28,14 @@
         [dir="rtl"] #report-modal-overlay .text-sm {
              text-align: right;
         }
+        /* Crucial fix to ensure maps have a height */
+        #pet-location-map, #task-location-map {
+            height: 256px; /* Explicit height */
+            width: 100%; /* Explicit width */
+        }
+        .z-0 {
+            z-index: 0 !important;
+        }
     </style>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -312,6 +320,7 @@
         
         // Initialize Leaflet maps on forms
         function initMaps() {
+            console.log("Initializing maps...");
             // Pet location map
             const petMap = L.map('pet-location-map').setView([30.0444, 31.2357], 13); // Default to Cairo, Egypt
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -330,6 +339,7 @@
                 document.getElementById('pet-location-lat').value = e.latlng.lat;
                 document.getElementById('pet-location-lng').value = e.latlng.lng;
             });
+            petMap.invalidateSize();
 
             // Task location map
             const taskMap = L.map('task-location-map').setView([30.0444, 31.2357], 13);
@@ -349,6 +359,7 @@
                 document.getElementById('task-location-lat').value = e.latlng.lat;
                 document.getElementById('task-location-lng').value = e.latlng.lng;
             });
+            taskMap.invalidateSize();
         }
 
         // Setup real-time listeners for all collections
